@@ -30,17 +30,44 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [messageLog, setMessageLog] = useState<MQTTContextType['messageLog']>([]);
 
   useEffect(() => {
-    // Local EMQX broker connection
-    const mqttClient = mqtt.connect('ws://localhost:8083/mqtt', {
-      username: 'smartoffice',
-      password: 'smartoffice123',
+    // Build MQTT websocket URL from the browser location so it works with http/https and on different hosts
+    const pageProtocol = (typeof window !== 'undefined' && window.location && window.location.protocol) || 'http:';
+    const mqttProtocol = pageProtocol === 'https:' ? 'wss' : 'ws';
+    const host = (typeof window !== 'undefined' && window.location && window.location.hostname) || 'localhost';
+    const port = process.env.REACT_APP_MQTT_PORT || '8083';
+    const mqttUrl = `${mqttProtocol}://${host}:${port}/mqtt`;
+    console.debug('MQTT connecting to', mqttUrl);
+
+    // Local EMQX broker connection (connect over websocket)
+    const mqttClient = mqtt.connect(mqttUrl, {
+      username: 'admin',
+      password: 'public',
       protocolVersion: 5,
     });
 
+    // track mounted state to avoid reacting to events after cleanup (React Strict Mode can mount/unmount twice)
+    let isMounted = true;
+
     mqttClient.on('connect', () => {
       console.log('Connected to MQTT broker');
+      if (!isMounted) {
+        // Component was unmounted already — ignore this event
+        return;
+      }
       setIsConnected(true);
-      
+
+      // Guard subscribe if the client is in the process of disconnecting
+      // (some timing races can cause subscribe() to be called while .end() is running)
+      // The mqtt library exposes a `disconnecting` flag used in the error stacktrace.
+      // Only subscribe when the client is not disconnecting.
+      // Also check connected flag as an extra guard.
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      if ((mqttClient as any).disconnecting || !mqttClient.connected) {
+        console.warn('Skipping subscribe: client is disconnecting or not connected');
+        return;
+      }
+
       // Subscribe to all office topics
       mqttClient.subscribe('office/#', (err) => {
         if (err) console.error('Subscription error:', err);
@@ -92,10 +119,22 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsConnected(false);
     });
 
+    // Update state when connection closes so UI knows we are disconnected
+    mqttClient.on('close', () => {
+      console.log('MQTT connection closed');
+      setIsConnected(false);
+    });
+
     setClient(mqttClient);
 
     return () => {
-      mqttClient.end();
+      // mark unmounted so any late 'connect' events are ignored
+      isMounted = false;
+      try {
+        mqttClient.end(true);
+      } catch (e) {
+        // ignore
+      }
     };
   }, []);
 

@@ -15,22 +15,19 @@ services:
       - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
 
   frontend:
-    image: nginx:alpine
-    container_name: smartoffice-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80" # serve build/ at localhost:3000
+    image: node:24
+    container_name: front-end
     volumes:
-      - ./build:/usr/share/nginx/html:ro
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && npm start"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - HOST=0.0.0.0
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
 
 
-# Usage:
-# 1. Build frontend first:
-#      npm run build
-# 2. Start all services:
-#      docker compose up -d
-# 3. Access:
-#      EMQX dashboard: http://localhost:18083 (user: admin, pass: public)
-#      Frontend:       http://localhost:3000
-#
-# To add more services, extend this file.
