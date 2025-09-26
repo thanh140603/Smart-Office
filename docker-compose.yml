@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  emqx:
+    image: emqx/emqx:5.1.6
+    container_name: emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"    # MQTT TCP
+      - "8083:8083"    # MQTT WebSocket
+      - "8084:8084"    # MQTT Secure WebSocket (wss)
+      - "8883:8883"    # MQTT Secure TCP
+      - "18083:18083"  # EMQX Dashboard
+    environment:
+      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
+
+  # Uncomment below to serve static build with nginx
+  # frontend:
+  #   image: nginx:alpine
+  #   container_name: smartoffice-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80" # serve build/ at localhost:3000
+  #   volumes:
+  #     - ./build:/usr/share/nginx/html:ro
+
+# Usage:
+#   docker-compose up -d emqx
+#   (or docker compose up -d emqx)
+#   Access EMQX dashboard: http://localhost:18083 (user: admin, pass: public)
+#   To add more services, extend this file.
