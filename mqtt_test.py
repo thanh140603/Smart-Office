@@ -1,3 +1,208 @@
+#!/usr/bin/env python3
+"""
+MQTT test tool for publishing and subscribing to office topics.
+
+Defaults:
+- WebSocket to EMQX at ws://localhost:8083/mqtt (same as FE)
+- Username: admin, Password: public
+
+Examples:
+- Listen only (WS):
+    python mqtt_test.py --duration 60 --no-publish
+
+- Publish a quick test sequence (WS, default):
+    python mqtt_test.py --duration 20
+
+- Use TCP 1883 instead of WS:
+    python mqtt_test.py --tcp --port 1883
+"""
+
+import argparse
+import signal
+import sys
+import time
+from datetime import datetime
+from typing import List, Tuple
+
+import paho.mqtt.client as mqtt
+
+
+def current_ts() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+class MqttTester:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        use_websocket: bool = True,
+        websocket_path: str = "/mqtt",
+        qos: int = 0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.use_websocket = use_websocket
+        self.websocket_path = websocket_path
+        self.qos = qos
+
+        self.client = mqtt.Client(
+            client_id=f"mqtt-test-{int(time.time())}",
+            clean_session=True,
+            protocol=mqtt.MQTTv5,
+            transport="websockets" if use_websocket else "tcp",
+        )
+        self.client.username_pw_set(self.username, self.password)
+        if self.use_websocket:
+            # Match FE path `ws://host:8083/mqtt`
+            self.client.ws_set_options(path=self.websocket_path)
+
+        # Optional, route logs to stdout for easier debugging
+        # self.client.enable_logger()
+
+        # Attach callbacks
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
+        self.client.on_disconnect = self._on_disconnect
+        self.client.on_subscribe = self._on_subscribe
+        self.client.on_publish = self._on_publish
+
+        self._is_connected = False
+
+    # ---- MQTT callbacks ----
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
+        ok = int(reason_code) == 0
+        self._is_connected = ok
+        status = "connected" if ok else f"failed rc={reason_code}"
+        print(f"[{current_ts()}] MQTT {status} to {self.host}:{self.port} ({'WS' if self.use_websocket else 'TCP'})")
+        if ok:
+            # Subscribe to everything the FE cares about
+            client.subscribe("office/#", qos=self.qos)
+
+    def _on_disconnect(self, client, userdata, reason_code, properties=None):
+        self._is_connected = False
+        print(f"[{current_ts()}] MQTT disconnected rc={reason_code}")
+
+    def _on_subscribe(self, client, userdata, mid, granted_qos, properties=None):
+        print(f"[{current_ts()}] Subscribed (mid={mid}) granted_qos={granted_qos}")
+
+    def _on_publish(self, client, userdata, mid):
+        print(f"[{current_ts()}] Published (mid={mid})")
+
+    def _on_message(self, client, userdata, message: mqtt.MQTTMessage):
+        try:
+            payload = message.payload.decode("utf-8", errors="replace")
+        except Exception:
+            payload = str(message.payload)
+        print(f"[{current_ts()}] <- {message.topic} | {payload}")
+
+    # ---- Operations ----
+    def connect(self, keepalive: int = 60) -> None:
+        self.client.connect(self.host, self.port, keepalive)
+        self.client.loop_start()
+
+    def disconnect(self) -> None:
+        try:
+            self.client.loop_stop()
+        finally:
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+
+    def publish_sequence(self, delay_seconds: float = 0.5) -> None:
+        """Publish a short test sequence to mirror FE actions."""
+        sequence: List[Tuple[str, str]] = [
+            ("office/room1/light/set", "on"),
+            ("office/room1/light/set", "off"),
+            ("office/room1/light/set", "on"),
+            ("office/room1/light/set", "off"),
+            ("office/room1/ac/set", "23"),
+            ("office/room1/ac/set", "24"),
+            ("office/room1/curtain/set", "open"),
+            ("office/room1/curtain/set", "close"),
+            ("office/room1/curtain/set", "open"),
+            ("office/room1/curtain/set", "close"),
+        ]
+        for topic, payload in sequence:
+            print(f"[{current_ts()}] -> {topic} | {payload}")
+            result = self.client.publish(topic, payload=payload, qos=self.qos, retain=False)
+            # Optionally wait for mid complete
+            result.wait_for_publish(timeout=5)
+            time.sleep(delay_seconds)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="MQTT pub/sub tester for office topics")
+    transport = parser.add_mutually_exclusive_group()
+    transport.add_argument("--ws", dest="ws", action="store_true", help="Use WebSocket transport (default)")
+    transport.add_argument("--tcp", dest="ws", action="store_false", help="Use TCP transport")
+    parser.set_defaults(ws=True)
+
+    parser.add_argument("--host", default="localhost", help="MQTT broker host")
+    parser.add_argument("--port", type=int, help="MQTT broker port (default depends on transport)")
+    parser.add_argument("--username", default="admin", help="MQTT username")
+    parser.add_argument("--password", default="public", help="MQTT password")
+    parser.add_argument("--ws-path", default="/mqtt", help="WebSocket path (EMQX default: /mqtt)")
+    parser.add_argument("--qos", type=int, default=0, choices=[0, 1, 2], help="QoS for pub/sub")
+    parser.add_argument("--duration", type=int, default=20, help="Seconds to keep running before exit")
+    parser.add_argument("--no-publish", action="store_true", help="Subscribe only; don't publish test sequence")
+
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    # Default ports based on transport if not provided
+    port = args.port
+    if port is None:
+        port = 8083 if args.ws else 1883
+
+    tester = MqttTester(
+        host=args.host,
+        port=port,
+        username=args.username,
+        password=args.password,
+        use_websocket=args.ws,
+        websocket_path=args.ws_path,
+        qos=args.qos,
+    )
+
+    stop = False
+
+    def handle_sigint(signum, frame):
+        nonlocal stop
+        stop = True
+        print(f"[{current_ts()}] Caught signal, stopping...")
+
+    signal.signal(signal.SIGINT, handle_sigint)
+    signal.signal(signal.SIGTERM, handle_sigint)
+
+    try:
+        tester.connect()
+        # Give some time to connect+subscribe
+        time.sleep(1.0)
+
+        if not args.no_publish:
+            tester.publish_sequence()
+
+        # Keep process alive to receive messages
+        started_at = time.time()
+        while not stop and (time.time() - started_at) < args.duration:
+            time.sleep(0.25)
+    finally:
+        tester.disconnect()
+        print(f"[{current_ts()}] Done.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
 """
 Simple MQTT test tool using paho-mqtt.
 
