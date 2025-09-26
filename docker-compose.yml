@@ -14,18 +14,23 @@ services:
       - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
       - EMQX_DASHBOARD__DEFAULT_PASSWORD=public
 
-  # Uncomment below to serve static build with nginx
-  # frontend:
-  #   image: nginx:alpine
-  #   container_name: smartoffice-frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:80" # serve build/ at localhost:3000
-  #   volumes:
-  #     - ./build:/usr/share/nginx/html:ro
+  frontend:
+    image: nginx:alpine
+    container_name: smartoffice-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80" # serve build/ at localhost:3000
+    volumes:
+      - ./build:/usr/share/nginx/html:ro
+
 
 # Usage:
-#   docker-compose up -d emqx
-#   (or docker compose up -d emqx)
-#   Access EMQX dashboard: http://localhost:18083 (user: admin, pass: public)
-#   To add more services, extend this file.
+# 1. Build frontend first:
+#      npm run build
+# 2. Start all services:
+#      docker compose up -d
+# 3. Access:
+#      EMQX dashboard: http://localhost:18083 (user: admin, pass: public)
+#      Frontend:       http://localhost:3000
+#
+# To add more services, extend this file.
