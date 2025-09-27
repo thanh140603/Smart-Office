@@ -5,10 +5,11 @@ import { useMQTT } from '../contexts/MQTTContext';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import AcUnitIcon from '@mui/icons-material/AcUnit';
 import BlindsClosedIcon from '@mui/icons-material/BlindsClosed';
+import DoorFrontIcon from '@mui/icons-material/DoorFront';
 
 interface DeviceControlProps {
   room: string;
-  type: 'light' | 'ac' | 'curtain';
+  type: 'light' | 'ac' | 'curtain' | 'door';
 }
 
 const DeviceIcon = styled(IconButton)(({ theme }) => ({
@@ -35,25 +36,26 @@ const StyledButton = styled(Button)(({ theme }) => ({
 }));
 
 const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
-  const { publish, deviceStates } = useMQTT();
+  const { publishRoom, deviceStates } = useMQTT();
 
   const getStateTopic = () => `office/${room}/${type}/state`;
-  const getSetTopic = () => `office/${room}/${type}/set`;
+  const getSetTopic = () => `office/${room}/${type}/set`; // kept for backward compatibility (not used when room-level JSON is enabled)
 
   const currentState = deviceStates[getStateTopic()]?.state || 'off';
 
   const handleLightSwitch = (checked: boolean) => {
-    publish(getSetTopic(), checked ? 'on' : 'off');
+    publishRoom(room, { light: checked ? 'on' : 'off' });
   };
 
   const handleACTemperature = (temp: string) => {
     if (temp && !isNaN(Number(temp))) {
-      publish(getSetTopic(), temp);
+      publishRoom(room, { ac: Number(temp) });
     }
   };
 
   const handleCurtain = (action: 'open' | 'close') => {
-    publish(getSetTopic(), action);
+    const key = type === 'door' ? 'door' : 'curtain';
+    publishRoom(room, { [key]: action });
   };
 
   const getDeviceIcon = () => {
@@ -64,6 +66,8 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
         return <AcUnitIcon sx={{ fontSize: 40, color: 'primary.main' }} />;
       case 'curtain':
         return <BlindsClosedIcon sx={{ fontSize: 40, color: 'primary.main' }} />;
+      case 'door':
+        return <DoorFrontIcon sx={{ fontSize: 40, color: currentState === 'open' ? 'primary.main' : 'text.secondary' }} />;
     }
   };
 
@@ -75,6 +79,8 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
         return 'Air Conditioning';
       case 'curtain':
         return 'Window Curtains';
+      case 'door':
+        return 'Door Control';
     }
   };
 
@@ -118,6 +124,25 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
       )}
 
       {type === 'curtain' && (
+        <Stack direction="row" spacing={1} justifyContent="center" sx={{ mt: 2 }}>
+          <StyledButton
+            variant="contained"
+            onClick={() => handleCurtain('open')}
+            color="primary"
+          >
+            Open
+          </StyledButton>
+          <StyledButton
+            variant="outlined"
+            onClick={() => handleCurtain('close')}
+            color="primary"
+          >
+            Close
+          </StyledButton>
+        </Stack>
+      )}
+
+      {type === 'door' && (
         <Stack direction="row" spacing={1} justifyContent="center" sx={{ mt: 2 }}>
           <StyledButton
             variant="contained"

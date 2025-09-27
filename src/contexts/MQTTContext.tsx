@@ -5,6 +5,7 @@ interface MQTTContextType {
   client: MqttClient | null;
   isConnected: boolean;
   publish: (topic: string, message: string) => void;
+  publishRoom: (roomId: string, payload: Record<string, any>) => void;
   deviceStates: {
     [key: string]: {
       state: string;
@@ -19,6 +20,7 @@ const MQTTContext = createContext<MQTTContextType>({
   client: null,
   isConnected: false,
   publish: () => {},
+  publishRoom: () => {},
   deviceStates: {},
   messageLog: [],
 });
@@ -83,15 +85,27 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next.slice(0, 200);
       });
 
-      // Normalize a few common conventions so UI components can read a consistent key.
-      // Convention: office/{room}/{device}/{subtopic}
-      // If subtopic is 'set' or 'control' treat it as intent and mirror to '{base}/state'.
-      // If subtopic is 'state' or 'status' store as '{base}/state'. Otherwise keep raw topic (sensors etc.).
+      // Normalize messages:
+      // 1) Legacy: office/{room}/{device}/{subtopic}
+      // 2) New room JSON: topic 'office/{room}' with JSON payload e.g. { light: 'on', ac: 24 }
       setDeviceStates(prev => {
         const next = { ...prev };
         try {
           const parts = topic.split('/');
-          if (parts.length >= 4 && parts[0] === 'office') {
+          if (parts[0] === 'office' && parts.length === 2) {
+            // New room JSON format
+            const roomId = parts[1];
+            try {
+              const obj = JSON.parse(payload);
+              Object.entries(obj).forEach(([key, val]) => {
+                const base = `office/${roomId}/${key}`;
+                next[`${base}/state`] = { state: String(val), lastUpdate: new Date() };
+              });
+            } catch (e) {
+              // ignore parse error, store raw
+              next[topic] = { state: payload, lastUpdate: new Date() };
+            }
+          } else if (parts.length >= 4 && parts[0] === 'office') {
             const base = parts.slice(0, 3).join('/'); // e.g. office/room1/light
             const sub = parts.slice(3).join('/'); // remainder
             if (sub === 'set' || sub === 'control') {
@@ -144,8 +158,19 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const publishRoom = (roomId: string, payload: Record<string, any>) => {
+    if (!client || !isConnected) return;
+    const topic = `office/${roomId}`;
+    try {
+      const msg = JSON.stringify(payload);
+      client.publish(topic, msg);
+    } catch (e) {
+      console.error('Failed to stringify room payload', e);
+    }
+  };
+
   return (
-    <MQTTContext.Provider value={{ client, isConnected, publish, deviceStates, messageLog }}>
+    <MQTTContext.Provider value={{ client, isConnected, publish, publishRoom, deviceStates, messageLog }}>
       {children}
     </MQTTContext.Provider>
   );
