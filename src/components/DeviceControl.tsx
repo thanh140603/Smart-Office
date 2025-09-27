@@ -36,7 +36,7 @@ const StyledButton = styled(Button)(({ theme }) => ({
 }));
 
 const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
-  const { publishRoom, deviceStates } = useMQTT();
+  const { publishToCurrentRoom, deviceStates } = useMQTT();
 
   const getStateTopic = () => `office/${room}/${type}/state`;
   const getSetTopic = () => `office/${room}/${type}/set`; // kept for backward compatibility (not used when room-level JSON is enabled)
@@ -44,18 +44,18 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
   const currentState = deviceStates[getStateTopic()]?.state || 'off';
 
   const handleLightSwitch = (checked: boolean) => {
-    publishRoom(room, { light: checked ? 'on' : 'off' });
+    publishToCurrentRoom({ light: checked ? 'on' : 'off' });
   };
 
   const handleACTemperature = (temp: string) => {
     if (temp && !isNaN(Number(temp))) {
-      publishRoom(room, { ac: Number(temp) });
+      publishToCurrentRoom({ ac: Number(temp) });
     }
   };
 
   const handleCurtain = (action: 'open' | 'close') => {
     const key = type === 'door' ? 'door' : 'curtain';
-    publishRoom(room, { [key]: action });
+    publishToCurrentRoom({ [key]: action });
   };
 
   const getDeviceIcon = () => {

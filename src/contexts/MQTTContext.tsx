@@ -6,6 +6,9 @@ interface MQTTContextType {
   isConnected: boolean;
   publish: (topic: string, message: string) => void;
   publishRoom: (roomId: string, payload: Record<string, any>) => void;
+  publishToCurrentRoom: (payload: Record<string, any>) => void;
+  currentRoomId: string | null;
+  setCurrentRoomId: (roomId: string | null) => void;
   deviceStates: {
     [key: string]: {
       state: string;
@@ -21,6 +24,9 @@ const MQTTContext = createContext<MQTTContextType>({
   isConnected: false,
   publish: () => {},
   publishRoom: () => {},
+  publishToCurrentRoom: () => {},
+  currentRoomId: null,
+  setCurrentRoomId: () => {},
   deviceStates: {},
   messageLog: [],
 });
@@ -30,6 +36,7 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isConnected, setIsConnected] = useState(false);
   const [deviceStates, setDeviceStates] = useState<MQTTContextType['deviceStates']>({});
   const [messageLog, setMessageLog] = useState<MQTTContextType['messageLog']>([]);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
 
   useEffect(() => {
     // Build MQTT websocket URL from the browser location so it works with http/https and on different hosts
@@ -169,8 +176,13 @@ export const MQTTProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const publishToCurrentRoom = (payload: Record<string, any>) => {
+    if (!currentRoomId) return;
+    publishRoom(currentRoomId, payload);
+  };
+
   return (
-    <MQTTContext.Provider value={{ client, isConnected, publish, publishRoom, deviceStates, messageLog }}>
+    <MQTTContext.Provider value={{ client, isConnected, publish, publishRoom, publishToCurrentRoom, currentRoomId, setCurrentRoomId, deviceStates, messageLog }}>
       {children}
     </MQTTContext.Provider>
   );

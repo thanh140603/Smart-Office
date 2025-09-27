@@ -25,6 +25,7 @@ import Canvas from '../components/Canvas';
 import SettingsPanel from '../components/SettingsPanel';
 import { BaseWidget, RoomLayout, WorkspaceState, WidgetType } from '../types/widgets';
 import { loadWorkspace, saveWorkspace, upsertRoom, setCurrentRoom } from '../utils/storage';
+import { useMQTT } from '../contexts/MQTTContext';
 import DownloadIcon from '@mui/icons-material/Download';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -64,6 +65,7 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'designer'>('dashboard');
   const currentRoom: RoomLayout | undefined = workspace.rooms.find(r => r.id === workspace.currentRoomId);
   const [selectedWidget, setSelectedWidget] = useState<BaseWidget | null>(null);
+  const { setCurrentRoomId } = useMQTT();
 
   const createRoom = (name: string) => {
     const id = name.toLowerCase().replace(/\s+/g, '-');
@@ -74,6 +76,8 @@ const Dashboard: React.FC = () => {
 
   const selectRoom = (roomId: string) => {
     setWorkspace(prev => setCurrentRoom(prev, roomId));
+    // Update MQTT context with current room for publishing
+    setCurrentRoomId(roomId);
   };
 
   const updateWidgets = (widgets: BaseWidget[]) => {
