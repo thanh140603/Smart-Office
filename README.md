@@ -76,3 +76,7 @@ src/
 - Chrome/Edge (latest)
 - Firefox (latest)
 - Safari (latest)
+
+## Documentation
+
+- Project report: [docs/Project_Report.md](docs/Project_Report.md)
