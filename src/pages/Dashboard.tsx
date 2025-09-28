@@ -20,6 +20,15 @@ import SensorGauge from '../components/SensorGauge';
 import CombinedChart from '../components/CombinedChart';
 import SensorChart from '../components/SensorChart';
 import MQTTInspector from '../components/MQTTInspector';
+import MQTTTester from '../components/MQTTTester';
+import TemperatureGauge from '../components/TemperatureGauge';
+import HumidityGauge from '../components/HumidityGauge';
+import CO2Gauge from '../components/CO2Gauge';
+import TVOCGauge from '../components/TVOCGauge';
+import TemperatureChart from '../components/TemperatureChart';
+import HumidityChart from '../components/HumidityChart';
+import CO2Chart from '../components/CO2Chart';
+import TVOCChart from '../components/TVOCChart';
 import Palette from '../components/Palette';
 import Canvas from '../components/Canvas';
 import SettingsPanel from '../components/SettingsPanel';
@@ -65,13 +74,22 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'designer'>('dashboard');
   const currentRoom: RoomLayout | undefined = workspace.rooms.find(r => r.id === workspace.currentRoomId);
   const [selectedWidget, setSelectedWidget] = useState<BaseWidget | null>(null);
-  const { setCurrentRoomId } = useMQTT();
+  const { setCurrentRoomId, currentSensorValues, sensorData } = useMQTT();
+
+  // Sync workspace currentRoomId with MQTT context
+  useEffect(() => {
+    if (workspace.currentRoomId) {
+      setCurrentRoomId(workspace.currentRoomId);
+    }
+  }, [workspace.currentRoomId, setCurrentRoomId]);
 
   const createRoom = (name: string) => {
     const id = name.toLowerCase().replace(/\s+/g, '-');
     const room: RoomLayout = { id, name, widgets: [] };
     const next = upsertRoom(workspace, room);
     setWorkspace(setCurrentRoom(next, id));
+    // Update MQTT context with new room for publishing
+    setCurrentRoomId(id);
   };
 
   const selectRoom = (roomId: string) => {
@@ -118,26 +136,45 @@ const Dashboard: React.FC = () => {
     setWorkspace(prev => upsertRoom(prev, nextRoom));
   };
 
-  // Simulated real-time data
+  // Use real-time data from MQTT, fallback to dummy data
   const [tempData, setTempData] = useState(generateDummyData(28, 2, 30));
   const [humidityData, setHumidityData] = useState(generateDummyData(30, 8, 30));
-  const [co2Data] = useState(1899);
-  const [tvocData] = useState(0.553);
+  
+  // Use real-time sensor values from MQTT
+  const co2Data = currentSensorValues.co2;
+  const tvocData = currentSensorValues.tvoc;
 
-  // Update data every minute
+  // Update chart data with real-time MQTT data
+  useEffect(() => {
+    if (sensorData.temperature.length > 0) {
+      setTempData(sensorData.temperature);
+    }
+  }, [sensorData.temperature]);
+
+  useEffect(() => {
+    if (sensorData.humidity.length > 0) {
+      setHumidityData(sensorData.humidity);
+    }
+  }, [sensorData.humidity]);
+
+  // Fallback: Update dummy data every minute if no MQTT data
   useEffect(() => {
     const interval = setInterval(() => {
-      setTempData(prev => [...prev.slice(1), {
-        timestamp: new Date(),
-        value: prev[prev.length - 1].value + (Math.random() - 0.5) * 0.5,
-      }]);
-      setHumidityData(prev => [...prev.slice(1), {
-        timestamp: new Date(),
-        value: prev[prev.length - 1].value + (Math.random() - 0.5) * 2,
-      }]);
+      if (sensorData.temperature.length === 0) {
+        setTempData(prev => [...prev.slice(1), {
+          timestamp: new Date(),
+          value: prev[prev.length - 1].value + (Math.random() - 0.5) * 0.5,
+        }]);
+      }
+      if (sensorData.humidity.length === 0) {
+        setHumidityData(prev => [...prev.slice(1), {
+          timestamp: new Date(),
+          value: prev[prev.length - 1].value + (Math.random() - 0.5) * 2,
+        }]);
+      }
     }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [sensorData.temperature.length, sensorData.humidity.length]);
 
   return (
     <Box sx={{ flexGrow: 1, bgcolor: '#f5f5f5', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -189,28 +226,10 @@ const Dashboard: React.FC = () => {
             <Grid item xs={12} lg={2}>
               <Grid container spacing={3}>
                 <Grid item xs={12}>
-                  <StyledPaper>
-                    <SensorGauge
-                      value={parseFloat(tempData[tempData.length - 1].value.toFixed(1))}
-                      label="Temperature"
-                      unit="°C"
-                      color="#ff6b6b"
-                      min={15}
-                      max={35}
-                    />
-                  </StyledPaper>
+                  <TemperatureGauge />
                 </Grid>
                 <Grid item xs={12}>
-                  <StyledPaper>
-                    <SensorGauge
-                      value={co2Data}
-                      label="CO2"
-                      unit="ppm"
-                      color="#7c4dff"
-                      min={0}
-                      max={2000}
-                    />
-                  </StyledPaper>
+                  <CO2Gauge />
                 </Grid>
               </Grid>
             </Grid>
@@ -223,19 +242,41 @@ const Dashboard: React.FC = () => {
                       <Typography variant="h6">Air Quality</Typography>
                       <Typography variant="caption" color="text.secondary">Realtime - last 5 minutes</Typography>
                       <Box sx={{ mt: 2, height: 150 }}>
-                        <SensorChart title="TVOC" data={generateDummyData(0.55, 0.1, 20)} color="#00bcd4" unit="ppm" />
+                        <SensorChart title="TVOC" data={sensorData.tvoc.length > 0 ? sensorData.tvoc : generateDummyData(0.55, 0.1, 20)} color="#00bcd4" unit="ppm" />
                       </Box>
                     </Box>
                   </StyledPaper>
                 </Grid>
                 <Grid item xs={12}>
-                  <StyledPaper>
-                    <SensorGauge value={parseFloat(tvocData.toFixed(3))} label="TVOC" unit="ppm" color="#26a69a" min={0} max={1} />
-                  </StyledPaper>
+                  <HumidityGauge />
+                </Grid>
+                <Grid item xs={12}>
+                  <TVOCGauge />
                 </Grid>
                 <Grid item xs={12}>
                   <StyledPaper>
                     <MQTTInspector />
+                  </StyledPaper>
+                </Grid>
+                <Grid item xs={12}>
+                  <StyledPaper sx={{ p: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      🔍 Debug: Current Sensor Values
+                    </Typography>
+                    <Typography variant="body2">
+                      Temperature: {currentSensorValues.temperature}°C<br/>
+                      Humidity: {currentSensorValues.humidity}%<br/>
+                      CO2: {currentSensorValues.co2}ppm<br/>
+                      TVOC: {currentSensorValues.tvoc}ppm
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Data arrays length: T:{sensorData.temperature.length} H:{sensorData.humidity.length} C:{sensorData.co2.length} V:{sensorData.tvoc.length}
+                    </Typography>
+                  </StyledPaper>
+                </Grid>
+                <Grid item xs={12}>
+                  <StyledPaper>
+                    <MQTTTester />
                   </StyledPaper>
                 </Grid>
               </Grid>
@@ -258,45 +299,19 @@ const Dashboard: React.FC = () => {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <StyledPaper>
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Air Quality
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Realtime - last 5 minutes
-                  </Typography>
-                  <Box sx={{ mt: 2, height: 300 }}>
-                    <SensorChart
-                      title="TVOC"
-                      data={generateDummyData(0.55, 0.1, 10)}
-                      color="#00bcd4"
-                      unit="ppm"
-                    />
-                  </Box>
-                </Box>
-              </StyledPaper>
+              <TemperatureChart />
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <StyledPaper>
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Occupancy History
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Last 30 days
-                  </Typography>
-                  <Box sx={{ mt: 2, height: 300 }}>
-                    <SensorChart
-                      title="Occupancy"
-                      data={generateDummyData(70, 20, 30)}
-                      color="#4caf50"
-                      unit="%"
-                    />
-                  </Box>
-                </Box>
-              </StyledPaper>
+              <HumidityChart />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <CO2Chart />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <TVOCChart />
             </Grid>
           </Grid>
         </Container>

@@ -1,4 +1,18 @@
-export type WidgetType = 'sensorGauge' | 'deviceControl' | 'mqttInspector' | 'combinedChart' | 'sensorChart' | 'airQualityBar';
+export type WidgetType = 
+  | 'sensorGauge' 
+  | 'deviceControl' 
+  | 'mqttInspector' 
+  | 'combinedChart' 
+  | 'sensorChart' 
+  | 'airQualityBar'
+  | 'temperatureGauge'
+  | 'humidityGauge'
+  | 'co2Gauge'
+  | 'tvocGauge'
+  | 'temperatureChart'
+  | 'humidityChart'
+  | 'co2Chart'
+  | 'tvocChart';
 
 export interface BaseWidget {
   id: string;

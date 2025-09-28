@@ -36,13 +36,16 @@ const StyledButton = styled(Button)(({ theme }) => ({
 }));
 
 const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
-  const { publishToCurrentRoom, deviceStates } = useMQTT();
+  const { publishToCurrentRoom, deviceStates, currentRoomId } = useMQTT();
 
-  const getStateTopic = () => `office/${room}/${type}/state`;
-  const getSetTopic = () => `office/${room}/${type}/set`; // kept for backward compatibility (not used when room-level JSON is enabled)
+  // Use currentRoomId if available, otherwise fall back to the room prop
+  const activeRoomId = currentRoomId || room;
+  
+  const getStateTopic = () => `office/${activeRoomId}/${type}/state`;
+  const getSetTopic = () => `office/${activeRoomId}/${type}/set`; // kept for backward compatibility (not used when room-level JSON is enabled)
 
   const currentState = deviceStates[getStateTopic()]?.state || 'off';
-
+  
   const handleLightSwitch = (checked: boolean) => {
     publishToCurrentRoom({ light: checked ? 'on' : 'off' });
   };
@@ -111,7 +114,7 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
           <TextField
             type="number"
             label="Temperature"
-            defaultValue="24"
+            value={currentState === 'off' ? '' : currentState}
             onChange={(e) => handleACTemperature(e.target.value)}
             variant="outlined"
             size="small"
@@ -120,6 +123,9 @@ const DeviceControl: React.FC<DeviceControlProps> = ({ room, type }) => {
             }}
             sx={{ width: 150, mx: 'auto' }}
           />
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {currentState === 'off' ? 'OFF' : `${currentState}°C`}
+          </Typography>
         </Stack>
       )}
 

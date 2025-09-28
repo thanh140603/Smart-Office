@@ -8,6 +8,15 @@ import MQTTInspector from './MQTTInspector';
 import CombinedChart from './CombinedChart';
 import SensorChart from './SensorChart';
 import AirQualityBar from './AirQualityBar';
+import TemperatureGauge from './TemperatureGauge';
+import HumidityGauge from './HumidityGauge';
+import CO2Gauge from './CO2Gauge';
+import TVOCGauge from './TVOCGauge';
+import TemperatureChart from './TemperatureChart';
+import HumidityChart from './HumidityChart';
+import CO2Chart from './CO2Chart';
+import TVOCChart from './TVOCChart';
+import { useMQTT } from '../contexts/MQTTContext';
 
 interface CanvasProps {
   widgets: BaseWidget[];
@@ -15,12 +24,23 @@ interface CanvasProps {
   onSelect?: (widget: BaseWidget | null) => void;
 }
 
-const renderWidget = (w: BaseWidget) => {
+const renderWidget = (w: BaseWidget, currentSensorValues: { temperature: number; humidity: number; co2: number; tvoc: number }) => {
+  
   switch (w.type as WidgetType) {
     case 'sensorGauge':
+      // Determine sensor value based on label
+      const getSensorValue = () => {
+        const label = (w.props?.label ?? 'Sensor').toLowerCase();
+        if (label.includes('temperature')) return currentSensorValues.temperature;
+        if (label.includes('humidity')) return currentSensorValues.humidity;
+        if (label.includes('co2')) return currentSensorValues.co2;
+        if (label.includes('tvoc')) return currentSensorValues.tvoc;
+        return w.props?.value ?? 25; // fallback to props
+      };
+      
       return (
         <SensorGauge
-          value={w.props?.value ?? 25}
+          value={getSensorValue()}
           label={w.props?.label ?? 'Sensor'}
           unit={w.props?.unit ?? '°C'}
           color={w.props?.color ?? '#ff6b6b'}
@@ -45,10 +65,20 @@ const renderWidget = (w: BaseWidget) => {
         />
       );
     case 'sensorChart':
+      // Determine sensor data based on title
+      const getSensorChartData = () => {
+        const title = (w.props?.title ?? 'TVOC').toLowerCase();
+        if (title.includes('temperature')) return generateDummyData(currentSensorValues.temperature, 3, 20);
+        if (title.includes('humidity')) return generateDummyData(currentSensorValues.humidity, 10, 20);
+        if (title.includes('co2')) return generateDummyData(currentSensorValues.co2, 100, 20);
+        if (title.includes('tvoc')) return generateDummyData(currentSensorValues.tvoc, 0.1, 20);
+        return w.props?.data ?? generateDummyData(0.55, 0.1, 20); // fallback to props
+      };
+      
       return (
         <SensorChart
           title={w.props?.title ?? 'TVOC'}
-          data={w.props?.data ?? generateDummyData(0.55, 0.1, 20)}
+          data={getSensorChartData()}
           color={w.props?.color ?? '#00bcd4'}
           unit={w.props?.unit ?? 'ppm'}
         />
@@ -61,6 +91,24 @@ const renderWidget = (w: BaseWidget) => {
           max={w.props?.max ?? 500}
         />
       );
+    // New dedicated gauge components
+    case 'temperatureGauge':
+      return <TemperatureGauge />;
+    case 'humidityGauge':
+      return <HumidityGauge />;
+    case 'co2Gauge':
+      return <CO2Gauge />;
+    case 'tvocGauge':
+      return <TVOCGauge />;
+    // New dedicated chart components
+    case 'temperatureChart':
+      return <TemperatureChart />;
+    case 'humidityChart':
+      return <HumidityChart />;
+    case 'co2Chart':
+      return <CO2Chart />;
+    case 'tvocChart':
+      return <TVOCChart />;
     default:
       return null;
   }
@@ -79,6 +127,7 @@ const Canvas: React.FC<CanvasProps> = ({ widgets, onChange, onSelect }) => {
   const [dragId, setDragId] = React.useState<string | null>(null);
   const [offset, setOffset] = React.useState<{x: number; y: number}>({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const { currentSensorValues } = useMQTT();
 
   const onMouseDown = (e: React.MouseEvent, id: string) => {
     const target = e.currentTarget as HTMLElement;
@@ -212,7 +261,7 @@ const Canvas: React.FC<CanvasProps> = ({ widgets, onChange, onSelect }) => {
             {w.type}
           </Box>
           <Box sx={{ p: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            {renderWidget(w)}
+            {renderWidget(w, currentSensorValues)}
           </Box>
         </Paper>
       ))}
